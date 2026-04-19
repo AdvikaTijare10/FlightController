@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flight Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            background: radial-gradient(circle at center, #0a0f1c, #000);
+            font-family: 'Segoe UI', sans-serif;
+            color: #e0f7ff;
+        }
+
+        h1 {
+            text-align: center;
+            margin: 15px;
+            color: #00eaff;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr 1fr;
+            height: 75vh;
+            align-items: center;
+        }
+
+        .panel {
+            margin: 20px;
+            padding: 20px;
+            border-radius: 15px;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(0,255,255,0.2);
+        }
+
+        .panel h3 {
+            text-align: center;
+            color: #00eaff;
+        }
+
+        .telemetry-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            font-size: 18px;
+        }
+
+        .alert {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .safe { background: #003300; color: #00ffcc; }
+        .warning { background: #330000; color: red; }
+
+        /* COMPASS */
+      .compass-container {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    margin: 20px auto;
+    border: 3px solid #00eaff;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+    overflow: hidden;
+}
+
+.compass-card {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.1s linear;
+}
+
+/* This targets all cardinal directions */
+.mark {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+    font-weight: bold;
+    font-size: 20px;
+    color: #00eaff;
+    padding-top: 8px; /* Distance from top edge */
+}
+
+/* Rotate the containers, not just the text, to place them around the circle */
+.mark.n { transform: rotate(0deg); }
+.mark.e { transform: rotate(90deg); }
+.mark.s { transform: rotate(180deg); }
+.mark.w { transform: rotate(270deg); }
+
+.compass-needle {
+    position: absolute;
+    top: 0; left: 50%;
+    width: 4px; height: 15px;
+    background: #ff3d00;
+    transform: translateX(-50%);
+    z-index: 10;
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+        /* CENTER */
+        .center {
+            display: flex;
+            justify-content: center;
+        }
+
+        .attitude {
+            width: 320px;
+            height: 320px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 5px solid #00eaff;
+            position: relative;
+            box-shadow: 0 0 30px #00eaff;
+        }
+
+        .horizon {
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            top: -50%;
+            left: -50%;
+        }
+
+        #pitch-container {
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            top: -50%;
+            left: -50%;
+        }
+
+        .sky { height: 50%; background: #4fc3f7; }
+        .ground { height: 50%; background: #6d4c41; }
+
+        .center-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: white;
+            top: 50%;
+        }
+
+        .center-dot {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: white;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .aircraft {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .wing { width: 120px; height: 3px; background: #00eaff; }
+        .nose { width: 3px; height: 20px; background: #00eaff; margin: auto; }
+
+        /* GRAPHS */
+        .graph-container {
+            height: 120px;
+            margin-bottom: 20px;
+        }
+
+        /* 🔥 NEW SENSOR PANEL */
+        .bottom-panel {
+            margin: 10px 20px;
+            padding: 15px;
+            border-radius: 15px;
+            display: flex;
+            justify-content: space-around;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(0,255,255,0.2);
+        }
+
+        .sensor-box {
+            text-align: center;
+        }
+
+        .sensor-value {
+            font-size: 22px;
+            color: #00ffcc;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>✈ Flight Control Dashboard</h1>
+
+<div class="dashboard">
+
+    <!-- LEFT -->
+    <div class="panel">
+        <h3>Telemetry</h3>
+        <div class="telemetry-item">Roll <span id="roll">0</span></div>
+        <div class="telemetry-item">Pitch <span id="pitch">0</span></div>
+        <div class="telemetry-item">Yaw <span id="yaw">0</span></div>
+
+        <div id="alertBox" class="alert safe">SYSTEM NORMAL</div>
+
+        <h3>Compass</h3>
+       <div class="compass-container">
+    <div class="compass-card" id="compassCard">
+        <div class="mark n">N</div>
+        <div class="mark e">E</div>
+        <div class="mark s">S</div>
+        <div class="mark w">W</div>
+    </div>
+    <div class="compass-needle"></div>
+</div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="center">
+        <div class="attitude">
+            <div id="roll-container" class="horizon">
+                <div id="pitch-container">
+                    <div class="sky"></div>
+                    <div class="ground"></div>
+                </div>
+                <div class="center-line"></div>
+                <div class="center-dot"></div>
+            </div>
+
+            <div class="aircraft">
+                <div class="wing"></div>
+                <div class="nose"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="panel">
+        <h3>Graphs</h3>
+        <div class="graph-container"><canvas id="rollGraph"></canvas></div>
+        <div class="graph-container"><canvas id="pitchGraph"></canvas></div>
+        <div class="graph-container"><canvas id="yawGraph"></canvas></div>
+    </div>
+
+</div>
+
+<!-- 🔥 NEW BOTTOM SENSOR PANEL -->
+<div class="bottom-panel">
+    <div class="sensor-box">
+        <div>🌡️ Temp</div>
+        <div id="temp" class="sensor-value">--</div>
+    </div>
+
+    <div class="sensor-box">
+        <div>🌬️ Pressure</div>
+        <div id="pressure" class="sensor-value">--</div>
+    </div>
+
+    <div class="sensor-box">
+        <div>🛰️ Altitude</div>
+        <div id="altitude" class="sensor-value">--</div>
+    </div>
+</div>
+
+<script>
+let time = 0;
+let lastValues = { roll: 0, pitch: 0, yaw: 0 };
+let freezeCount = 0;
+// ===== GRAPH FUNCTION =====
+function createGraph(id, label, color) {
+    return new Chart(document.getElementById(id), {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: label,
+                data: [],
+                borderColor: color,
+                borderWidth: 2,
+                tension: 0.3
+            }]
+        },
+        options: {
+            animation: false,
+            scales: {
+                y: {
+                    suggestedMin: -40,
+                    suggestedMax: 40
+                }
+            }
+        }
+    });
+}
+
+const rollGraph = createGraph('rollGraph', 'Roll', 'cyan');
+const pitchGraph = createGraph('pitchGraph', 'Pitch', 'lime');
+const yawGraph = createGraph('yawGraph', 'Yaw', 'orange');
+
+// ===== FETCH =====
+function fetchData() {
+    fetch("http://127.0.0.1:5000/data")
+    .then(res => res.json())
+    .then(data => {
+
+        const roll = data.pitch;
+        const pitch = data.roll;
+        const yaw = data.yaw;
+        let alertBox = document.getElementById("alertBox");
+
+// EXTREME ORIENTATION
+        if (Math.abs(roll) > 60 || Math.abs(pitch) > 60) {
+            alertBox.innerText = "⚠ EXTREME ORIENTATION";
+            alertBox.className = "alert warning";
+        }
+
+        // SENSOR FREEZE (better logic)
+        else if (
+            Math.abs(roll - lastValues.roll) < 0.01 &&
+            Math.abs(pitch - lastValues.pitch) < 0.01 &&
+            Math.abs(yaw - lastValues.yaw) < 0.01
+        ) {
+            freezeCount++;
+
+            if (freezeCount > 20) {
+                alertBox.innerText = "⚠ SENSOR FREEZE";
+                alertBox.className = "alert warning";
+            }
+        }
+        else {
+            freezeCount = 0;
+            alertBox.innerText = "SYSTEM NORMAL";
+            alertBox.className = "alert safe";
+        }
+        document.getElementById("roll").innerText = roll.toFixed(2);
+        document.getElementById("pitch").innerText = pitch.toFixed(2);
+        document.getElementById("yaw").innerText = yaw.toFixed(2);
+
+        // 🔥 NEW SENSOR VALUES
+        document.getElementById("temp").innerText = data.temp.toFixed(1) + " °C";
+        document.getElementById("pressure").innerText = data.pressure.toFixed(1) + " hPa";
+        document.getElementById("altitude").innerText = data.altitude.toFixed(1) + " m";
+
+        // ATTITUDE
+        document.getElementById("roll-container").style.transform = `rotate(${roll}deg)`;
+        document.getElementById("pitch-container").style.transform = `translateY(${pitch*4}px)`;
+
+        updateGraph(rollGraph, roll);
+        updateGraph(pitchGraph, pitch);
+        updateGraph(yawGraph, yaw);
+        updateCompass(yaw);
+    });
+    lastValues = { roll, pitch, yaw };
+}
+function updateCompass(yaw) {
+    const compassCard = document.getElementById("compassCard");
+    
+    // Rotate the card in the opposite direction of the aircraft's heading
+    // We use negative yaw so the 'N' stays fixed relative to the world
+    compassCard.style.transform = `rotate(${-yaw}deg)`;
+}
+function updateGraph(graph, value) {
+    graph.data.labels.push(time++);
+    graph.data.datasets[0].data.push(value);
+
+    if (graph.data.labels.length > 30) {
+        graph.data.labels.shift();
+        graph.data.datasets[0].data.shift();
+    }
+
+    graph.update();
+}
+
+setInterval(fetchData, 100);
+fetchData();
+</script>
+
+</body>
+</html>
