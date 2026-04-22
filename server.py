@@ -279,8 +279,8 @@ def update_loop():
         latest_roll = roll
         latest_pitch = pitch
         latest_yaw = yaw
-        log_to_csv(latest_roll,latest_pitch,latest_yaw,latest_altitude,latest_temp, latest_pressure)
-            
+        # log_to_csv(latest_roll,latest_pitch,latest_yaw,latest_altitude,latest_temp, latest_pressure)
+        # time.sleep(0.05)
             
 
 # ================= RUN =================
