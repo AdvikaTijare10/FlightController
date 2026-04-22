@@ -1,3 +1,5 @@
+
+# ================= IMPORTS =================
 import serial
 import time
 import math
@@ -7,57 +9,66 @@ import csv
 from datetime import datetime
 
 
-# ================= CONFIG =================
+# ================= CONFIGURATION =================
 PORT = 'COM5'
 BAUD_RATE = 115200
 
 ACC_SCALE = 16384.0
 GYRO_SCALE = 131.0
-BETA = 0.1
+BETA = 0.1   # Madgwick filter gain
 
-# ==========================================
 
-# Quaternion
+# ================= GLOBAL STATE =================
+
+# Quaternion (orientation)
 q0, q1, q2, q3 = 1, 0, 0, 0
 prev_time = None
 
-# Gyro bias
+# Gyroscope bias
 gyro_bias_x = 0
 gyro_bias_y = 0
 gyro_bias_z = 0
 
-# Offsets
+# Offset calibration
 roll_offset = 0
 pitch_offset = 0
 
-# Latest values (shared with Flask)
+# Latest values (shared with frontend)
 latest_roll = 0
 latest_pitch = 0
 latest_yaw = 0
 
-# BMP values
 latest_temp = 0
 latest_pressure = 0
 latest_altitude = 0
 
-#==================LOGGING TO CSV===================#
-# Define log file name with timestamp
+
+# ================= CSV LOGGING SETUP =================
+
 log_filename = f"flight_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
-# Write Header
-with open(log_filename, mode='w', newline='') as f:
-    writer = csv.writer(f)
-    writer.writerow(['Timestamp', 'Roll', 'Pitch', 'Yaw', 'Altitude', 'Temp','Pressure'])
+# Open file once (IMPORTANT)
+log_file = open(log_filename, mode='w', newline='')
+writer = csv.writer(log_file)
 
+# Write header
+writer.writerow(['Timestamp', 'Roll', 'Pitch', 'Yaw', 'Altitude', 'Temp', 'Pressure'])
+
+# Logging function
 def log_to_csv(r, p, y, alt, temp, pressure):
-    with open(log_filename, mode='a', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([datetime.now().isoformat(), r, p, y, alt, temp,pressure])
+    writer.writerow([
+        datetime.now().isoformat(),
+        r, p, y, alt, temp, pressure
+    ])
+
+# Logging control
+log_counter = 0
 
 
+# ================= SERIAL PARSING =================
 
-# ================= PARSER =================
-def parse_line(line):
+# Parse IMU line
+def parse_imu(line):
     try:
         if "ACC:" in line and "GYRO:" in line:
             acc_part, gyro_part = line.split("|")
@@ -74,23 +85,23 @@ def parse_line(line):
     return None
 
 
+# Parse BMP line
 def parse_bmp(line):
     try:
         if "BMP:" in line:
             vals = line.replace("BMP:", "").strip().split(",")
-
-            return (
-                float(vals[0]),  # temp
-                float(vals[1]),  # pressure
-                float(vals[2])   # altitude
-            )
+            return float(vals[0]), float(vals[1]), float(vals[2])
     except:
         return None
     return None
-# ================= MADGWICK =================
+
+
+# ================= MADGWICK FILTER =================
+
 def madgwick_update(ax, ay, az, gx, gy, gz, dt):
     global q0, q1, q2, q3
 
+    # Normalize accelerometer
     norm = math.sqrt(ax*ax + ay*ay + az*az)
     if norm == 0:
         return
@@ -98,25 +109,20 @@ def madgwick_update(ax, ay, az, gx, gy, gz, dt):
     ay /= norm
     az /= norm
 
+    # Convert gyro to radians
     gx = math.radians(gx)
     gy = math.radians(gy)
     gz = math.radians(gz)
 
+    # Gradient descent step
     f1 = 2*(q1*q3 - q0*q2) - ax
     f2 = 2*(q0*q1 + q2*q3) - ay
     f3 = 2*(0.5 - q1*q1 - q2*q2) - az
 
-    J_11or24 = 2*q2
-    J_12or23 = 2*q3
-    J_13or22 = 2*q0
-    J_14or21 = 2*q1
-    J_32 = 2*J_14or21
-    J_33 = 2*J_11or24
-
-    grad0 = J_14or21*f2 - J_11or24*f1
-    grad1 = J_12or23*f1 + J_13or22*f2 - J_32*f3
-    grad2 = J_12or23*f2 - J_33*f3 - J_13or22*f1
-    grad3 = J_14or21*f1 + J_11or24*f2
+    grad0 = -2*q2*f1 + 2*q1*f2
+    grad1 = 2*q3*f1 + 2*q0*f2 - 4*q1*f3
+    grad2 = -2*q0*f1 + 2*q3*f2 - 4*q2*f3
+    grad3 = 2*q1*f1 + 2*q2*f2
 
     norm = math.sqrt(grad0*grad0 + grad1*grad1 + grad2*grad2 + grad3*grad3)
     if norm == 0:
@@ -127,6 +133,7 @@ def madgwick_update(ax, ay, az, gx, gy, gz, dt):
     grad2 /= norm
     grad3 /= norm
 
+    # Quaternion update
     qDot0 = 0.5 * (-q1*gx - q2*gy - q3*gz) - BETA * grad0
     qDot1 = 0.5 * (q0*gx + q2*gz - q3*gy) - BETA * grad1
     qDot2 = 0.5 * (q0*gy - q1*gz + q3*gx) - BETA * grad2
@@ -137,32 +144,37 @@ def madgwick_update(ax, ay, az, gx, gy, gz, dt):
     q2 += qDot2 * dt
     q3 += qDot3 * dt
 
+    # Normalize quaternion
     norm = math.sqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3)
     q0 /= norm
     q1 /= norm
     q2 /= norm
     q3 /= norm
 
+
+# Convert quaternion → Euler
 def get_euler():
     roll = math.atan2(2*(q0*q1 + q2*q3), 1 - 2*(q1*q1 + q2*q2))
     pitch = math.asin(2*(q0*q2 - q3*q1))
     yaw = math.atan2(2*(q0*q3 + q1*q2), 1 - 2*(q2*q2 + q3*q3))
     return math.degrees(roll), math.degrees(pitch), math.degrees(yaw)
 
-# ================= SERIAL =================
+
+# ================= SERIAL INIT =================
 ser = serial.Serial(PORT, BAUD_RATE, timeout=1)
 time.sleep(2)
+
 
 # ================= GYRO CALIBRATION =================
 print("Calibrating gyro... Keep still")
 
 samples = 200
 bx = by = bz = 0
-count = 0
 
+count = 0
 while count < samples:
     line = ser.readline().decode(errors='ignore').strip()
-    data = parse_line(line)
+    data = parse_imu(line)
     if not data:
         continue
 
@@ -176,17 +188,19 @@ gyro_bias_x = bx / samples
 gyro_bias_y = by / samples
 gyro_bias_z = bz / samples
 
-print("Gyro calibrated\n")
+print("Gyro calibrated")
+
 
 # ================= OFFSET CALIBRATION =================
 print("Calibrating offsets... Keep flat")
 
 samples = 100
-r_sum = p_sum = count = 0
+r_sum = p_sum = 0
+count = 0
 
 while count < samples:
     line = ser.readline().decode(errors='ignore').strip()
-    data = parse_line(line)
+    data = parse_imu(line)
     if not data:
         continue
 
@@ -219,11 +233,13 @@ while count < samples:
 roll_offset = r_sum / samples
 pitch_offset = p_sum / samples
 
-print("Offset calibrated\n")
+print("Offsets calibrated")
 
-# ================= FLASK =================
+
+# ================= FLASK  =================
 app = Flask(__name__)
 CORS(app)
+
 
 @app.route("/data")
 def get_data():
@@ -236,22 +252,34 @@ def get_data():
         "altitude": round(latest_altitude, 2)
     })
 
-# ================= MAIN LOOP =================
-def update_loop():
-    global prev_time, latest_roll, latest_pitch, latest_yaw,latest_temp, latest_pressure, latest_altitude
-    while True:
-        line = ser.readline().decode(errors='ignore').strip()
-        bmp_data = parse_bmp(line)
-        if bmp_data:
-            latest_temp, latest_pressure, latest_altitude = bmp_data
-            continue  # skip IMU processing for this line
-        imu_data = parse_line(line)
 
-        if not imu_data:
+
+
+def update_loop():
+    global prev_time
+    global latest_roll, latest_pitch, latest_yaw
+    global latest_temp, latest_pressure, latest_altitude
+    global log_counter
+
+    while True:
+
+        # Read serial
+        line = ser.readline().decode(errors='ignore').strip()
+
+        # BMP DATA
+        bmp = parse_bmp(line)
+        if bmp:
+            latest_temp, latest_pressure, latest_altitude = bmp
             continue
 
-        ax, ay, az, gx, gy, gz = imu_data
+        # IMU DATA
+        imu = parse_imu(line)
+        if not imu:
+            continue
 
+        ax, ay, az, gx, gy, gz = imu
+
+        # Scale data
         ax /= ACC_SCALE
         ay /= ACC_SCALE
         az /= ACC_SCALE
@@ -260,6 +288,7 @@ def update_loop():
         gy = (gy - gyro_bias_y) / GYRO_SCALE
         gz = (gz - gyro_bias_z) / GYRO_SCALE
 
+        # Time step
         current_time = time.time()
 
         if prev_time is None:
@@ -269,19 +298,29 @@ def update_loop():
         dt = current_time - prev_time
         prev_time = current_time
 
+        # Filter update
         madgwick_update(ax, ay, az, gx, gy, gz, dt)
 
+        # Convert to angles
         roll, pitch, yaw = get_euler()
 
         roll -= roll_offset
         pitch -= pitch_offset
 
+        # Store values
         latest_roll = roll
         latest_pitch = pitch
         latest_yaw = yaw
-        # log_to_csv(latest_roll,latest_pitch,latest_yaw,latest_altitude,latest_temp, latest_pressure)
-        # time.sleep(0.05)
-            
+
+        # Controlled logging (every 10 cycles)
+        log_counter += 1
+        if log_counter % 10 == 0:
+            log_to_csv(roll, pitch, yaw,
+                       latest_altitude, latest_temp, latest_pressure)
+
+        # Stable loop timing
+        time.sleep(0.02)
+
 
 # ================= RUN =================
 if __name__ == "__main__":
@@ -289,5 +328,3 @@ if __name__ == "__main__":
 
     threading.Thread(target=update_loop, daemon=True).start()
     app.run(port=5000)
-
-
