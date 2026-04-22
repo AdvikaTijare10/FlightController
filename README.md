@@ -41,9 +41,8 @@ Flight Controller Dashboard/
 ├── server.py              # Backend (sensor processing + API + logging)
 ├── index.html             # Frontend dashboard UI
 ├── flight_log_*.csv       # Auto-generated logs
-├── venv/                  # Virtual environment (not required in repo)
-├── .vscode/               # Editor config
-└── __pycache__/           # Python cache
+├── .gitignore
+
 ```
 
 ---
