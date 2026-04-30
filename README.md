@@ -41,9 +41,9 @@ Flight Controller Dashboard/
 ├── server.py              # Backend (sensor processing + API + logging)
 ├── index.html             # Frontend dashboard UI
 ├── flight_log_*.csv       # Auto-generated logs
-├── venv/                  # Virtual environment (not required in repo)
-├── .vscode/               # Editor config
-└── __pycache__/           # Python cache
+├── .gitignore
+├── README.md
+
 ```
 
 ---
@@ -234,11 +234,11 @@ BAUD_RATE = 115200
 
 ## 🔮 Future Improvements
 
-* Magnetometer integration (true heading)
-* 3D visualization
-* Noise filtering improvements
-* WebSocket for faster updates
-* Deployment (remote monitoring)
+- Improve sensor calibration and bias correction  
+- Reduce noise in IMU readings for more stable output  
+- Implement a Kalman filter for better sensor fusion accuracy  
+- Optimize data update rate between backend and frontend  
+- Handle sensor failures and communication errors more robustly  
 
 ---
 
@@ -253,6 +253,3 @@ This project demonstrates:
 
 ---
 
-## 👨‍💻 Author
-
-Built as a hands-on embedded + flight software project.
