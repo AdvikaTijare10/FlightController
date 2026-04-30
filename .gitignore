@@ -1,12 +1,11 @@
-# Python
+# Python bytecode
 __pycache__/
 *.pyc
+
+# Virtual environment
 venv/
+env/
 
-
-
-# VS Code
+# Editor settings
 .vscode/
 
-# OS
-.DS_Store
